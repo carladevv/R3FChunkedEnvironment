@@ -1,0 +1,47 @@
+/* src/metrics/panel.css */
+
+.metricsPanel {
+  position: fixed;
+  top: 0; right: 0;
+  width: min(420px, 25vw);
+  height: 100vh;
+  background: rgba(12,12,16,0.86);
+  color: #f3f4f6;
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  border-left: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(8px);
+  overflow: auto;
+  z-index: 10;
+}
+
+.metricsPanel .bar {
+  position: sticky; top: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(20,20,24,0.9);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.metricsPanel .btn {
+  padding: 6px 10px; border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 8px; text-decoration: none; color: inherit;
+}
+
+.sec { border-bottom: 1px solid rgba(255,255,255,0.06); }
+.secHeader {
+  width: 100%; text-align: left; padding: 10px 12px;
+  background: none; border: 0; color: inherit; font-weight: 600;
+  display: flex; gap: 8px; align-items: center; cursor: pointer;
+}
+.secBody { padding: 8px 12px 14px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+.grid > div { background: rgba(255,255,255,0.04); padding: 8px; border-radius: 8px; }
+
+.list { margin: 8px 0 0; padding-left: 16px; }
+
+.hint { opacity: 0.8; margin-top: 8px; }

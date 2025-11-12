@@ -1,0 +1,12 @@
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+body {
+  /* Para comprobar transparencia, dejamos un fondo visible en el DOM */
+  background: linear-gradient(135deg, #0e0e10, #1e1e22);
+}
+canvas {
+  display: block;
+}
