@@ -5,15 +5,22 @@ import { OrbitControls, Stats, Environment } from '@react-three/drei'
 
 // your existing components/paths (keep as-is)
 import GcModel from './chunks/GcModel'
+import LODModel from './chunks/LODModel'
 import MetricsHud from './metrics/MetricsHud'
 import MetricsCollector from './metrics/MetricCollector'
 
 // new components
 import SceneJanitor from './scene/SceneJanitor'
-import DeleteGeometriesButton from './scene/DeleteGeometriesButton'
+import LODSwitchButton from './scene/LODSwitchButton'
 
 // styles you already have
 import './metrics/panel.css'
+
+// reflect LOD changes to the global (for the button cycle UX)
+// not strictly necessary; just convenient to show the current index externally
+if (typeof window !== 'undefined' && window.__LOD_CURRENT__ == null) {
+  window.__LOD_CURRENT__ = 3
+}
 
 export default function App() {
   const [metrics, setMetrics] = useState(null)
@@ -31,11 +38,8 @@ export default function App() {
         dpr={[1, 1.5]}
         shadows={false}
       >
-        {/* example content; keep your own */}
-        <GcModel url="/models/tile_ground068_00.glb" position={[0, 0, 0]} />
-        <GcModel url="/models/tile_ground068_01.glb" position={[2, 0, 0]} />
-        <GcModel url="/models/tile_ground068_02.glb" position={[0, 0, 2]} />
-        <GcModel url="/models/tile_ground068_03.glb" position={[2, 0, 2]} />
+         {/* swap your base to the folder that contains LOD_00.glb .. LOD_03.glb */}
+        <LODModel base="/models/LODs/Ground68_00_LODs" position={[0, 0, 0]} initialLevel={0} />
 
         {/* metrics collector (inside canvas) */}
         <MetricsCollector onUpdate={handleMetrics} />
@@ -53,7 +57,7 @@ export default function App() {
       <MetricsHud data={metrics} />
 
       {/* independent bottom-left button (outside canvas) */}
-      <DeleteGeometriesButton />
+      <LODSwitchButton />
     </>
   )
 }
