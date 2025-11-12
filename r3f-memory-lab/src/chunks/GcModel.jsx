@@ -1,27 +1,33 @@
-import React from 'react'
+// src/GcModel.jsx (or your current path)
+import React, { useEffect, useState, memo } from 'react'
 import { useGLTF } from '@react-three/drei'
+
+function GcModelInner({ url, position = [0, 0, 0] }) {
+  const gltf = useGLTF(url)
+  // annotate for debugging + janitor URL discovery
+  gltf.scene.userData.__gltfUrl = url
+  gltf.scene.name ||= `GcModel:${url}`
+  return <primitive object={gltf.scene} position={position} />
+}
 
 /**
  * GcModel
- * - Loads a GLB and mounts its scene.
- * - Props:
- *    - url: string (path to .glb)
- *    - position?: [number, number, number]
- *
- * Notes:
- * - We rely on R3F's default disposal on unmount (no `dispose={null}`).
- * - Put .glb files in /public/models/... for easy local testing.
+ * - Renders while `alive === true`.
+ * - On 'gc:delete-geometries' event, it flips `alive` to false => unmounts loader.
+ *   This prevents re-fetch/remount after caches are cleared.
  */
-export default function GcModel({ url, position = [0, 0, 0] }) {
-  const gltf = useGLTF(url)
+export default function GcModel({ url, position }) {
+  const [alive, setAlive] = useState(true)
 
-  // Optional: ensure names exist for your HUD "per-mesh" list
-  gltf.scene.name ||= `GcModel:${url}`
+  useEffect(() => {
+    const kill = () => setAlive(false)
+    window.addEventListener('gc:delete-geometries', kill)
+    return () => window.removeEventListener('gc:delete-geometries', kill)
+  }, [])
 
-  return (
-    <primitive object={gltf.scene} position={position} />
-  )
+  if (!alive) return null
+  return <GcModelInner url={url} position={position} />
 }
 
-// Optional: you can preload common assets if helpful
-// useGLTF.preload('/models/your-model.glb')
+// Optional: keep using preload elsewhere if you want
+// useGLTF.preload('/models/whatever.glb')

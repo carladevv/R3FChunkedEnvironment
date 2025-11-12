@@ -1,0 +1,305 @@
+[Help] Can’t dispose Texture and free up renderer memory (instead dispose geometries works)
+Questions
+geometry
+materials
+textures
+dispose
+
+
+Jan 2022
+Jan 2022
+post by DidoMarchet on Jan 21, 2022
+
+DidoMarchet
+Jan 2022
+hi!
+I try to clean up the memory of my rendered.
+
+Each time I change the model in my scene I remove the old model and I dispose the old geometries and the old materials in this way:
+
+scene.remove(model)
+meshes.forEach((mesh) => {
+  mesh.geometry.dispose()
+  mesh.material.dispose()
+})
+But if I check the renderer.info I see the number of the geometries and textures grow up.
+
+In the picture below I print the memory status when I add a new object and when I remove the old:
+
+Screenshot 2022-01-21 at 10.11.50
+Screenshot 2022-01-21 at 10.11.50
+730×576 90.7 KB
+So my question is:
+
+how to find and dispose textures from a scene?
+
+Thanks in advance and kind regards,
+
+Davide
+
+
+@Chaser_Code I tried to dispose the texture object and not the map of the mesh and It works: const texture = new THREE.CanvasTexture(canvas) // Correctly disposed texture.dispose() But about your answer I wonder if it’s possibile to add more materials to a mesh because it could be useful in my …
+
+
+post by Chaser_Code on Jan 21, 2022
+
+Chaser_Code
+Jan 2022
+Try this:
+
+scene.remove(model)
+meshes.forEach((mesh) => {
+  mesh.geometry.dispose();
+  mesh.material.forEach((tex) => { tex.map.dispose(); }
+  mesh.material.dispose();
+})
+
+post by DidoMarchet on Jan 21, 2022
+
+DidoMarchet
+Jan 2022
+Hi @Chaser_Code thanks for reply!
+Unfortunately It return me an error because my materia il not an array:
+Screenshot 2022-01-21 at 11.52.02
+
+then I try without success this:
+
+meshes.forEach((mesh) => {
+    mesh.geometry.dispose()
+    mesh.material.map.dispose()
+    mesh.material.dispose()
+  })
+Maybe I missed something ?!
+
+Thanks and regards,
+
+Davide
+
+
+post by DidoMarchet on Jan 21, 2022
+post by Chaser_Code on Jan 21, 2022
+
+Three How to Free Memory Fast by dispose Removing Model
+Questions
+memory
+
+
+Jan 2021
+Jan 2021
+post by gaojunxiao on Jan 9, 2021
+
+gaojunxiao
+
+1
+Jan 2021
+stl models are constantly added and deleted in three projects and cached are released in a dispose way, deleting models
+
+My project is running on a 2 G memory pad, and now I want to solve the problem
+
+Release memory quickly when removing the model. Removing the model now typically takes 2-3 minutes to see the memory release if
+
+There are good solutions to provide really thank you very much.
+
+
+
+
+post by Lawrence3DPK on Jan 9, 2021
+
+Lawrence3DPK
+Jan 2021
+@gaojunxiao see my answer here…
+
+Try with function like this… function disposeNode (node) { if (node instanceof THREE.Mesh) { if (node.geometry) { node.geometry.dispose (); } if (node.material) { if (node.material instanceof THREE.MeshFaceMaterial) { $.each (node.material.materials, function (idx, mtrl) { if (mtrl.map) mtrl.map.dispose (); if (mtrl.lightMap) …
+Safe
+
+
+post by gaojunxiao on Jan 9, 2021
+
+gaojunxiao
+Jan 2021
+企业微信截图_16101861578073
+This is the code I process the model, it works, but the browser memory is released slowly,
+
+It takes 2-3 minutes to go down. What’s the best way to speed up the release of browser memory,
+
+i am using (chorme) development now, hope to get more solutions, thanks.
+
+
+post by Lawrence3DPK on Jan 9, 2021
+
+Lawrence3DPK
+Jan 2021
+@gaojunxiao it looks like your for loop is incromenting through every object of the scene before and as it finds any instance of mesh so the for loop is slowing the process down as its running over unnessisary items in the scene, if your scene has a lot of objects this will undoubtedly take a lot more time to do one by one for each “I” the code I have suggested in previous reply disposes memory next to instantaneously and is pretty easy to implement if you want to try that?
+
+Freeing memory with threejs
+Asked 9 years, 1 month ago
+Modified 5 years, 4 months ago
+Viewed 2k times
+
+Report this ad
+1
+
+I have some problem freeing memory in threejs when i remove a mesh using scene.remove(mesh) the mesh is removed but seems that memory used from js is not released.
+
+I'm using webglrenderer with buffergeometry for the mesh and windows.
+
+javascriptthree.js
+Share
+Improve this question
+Follow
+asked Oct 6, 2016 at 20:19
+Salvatore's user avatar
+Salvatore
+17799 bronze badges
+1
+Do you have a reference to the mesh in some closure? – 
+pailhead
+ CommentedOct 7, 2016 at 7:56
+1
+yes but after removing the mesh i'm setting the reference to null :( – 
+Salvatore
+ CommentedOct 7, 2016 at 8:52
+Add a comment
+2 Answers
+Sorted by:
+
+Highest score (default)
+6
+
+This can be dark side of the js memory usage.
+
+First try to setup primitive value to your objects.
+
+javascript
+mesh.geometry.dispose();
+mesh.geometry = null; // or undefined .
+
+// `delete` also cool but not support for old browsers 
+// The delete keyword deletes both the value of the property 
+// and the property itself.
+delete mesh.geometry 
+Another way (try some hack) :
+
+javascript
+ mesh.geometry = VerySmallmesh.geometry  //see for three.js how to do this if this is not correct mesh.geometry = null; 
+// try to override memory stack 
+You must be sure that this object is only instance of him self (how to say). Be sure you dont have a clone if you have than you will need to destroy him also.
+
+Update : I want to say one more , use slice method for clearing arrays from object in forEach or for loop.
+
+Share
+Improve this answer
+Follow
+edited Jul 9, 2020 at 9:06
+answered Oct 7, 2016 at 11:16
+Nikola Lukic's user avatar
+Nikola Lukic
+4,29266 gold badges5151 silver badges8181 bronze badges
+Sign up to request clarification or add additional context in comments.
+
+5 Comments
+
+
+Salvatore
+Over a year ago
+uhm ok i will try to call dispose and see if something change, but if i have some object3D with some children and every children has another children i need to call dispose for every mesh? and there is a method for do this in every children easily?
+
+Nikola Lukic
+Over a year ago
+Read it to the end this page (most important on buttom page): github.com/mrdoob/three.js/issues/5175 and than see example in this threejs.org/examples/#webgl_test_memory
+
+Salvatore
+Over a year ago
+seems that works thank you but takes time for free memory, there is a quickly way for free memory? i ask this because i need to use threejs in a smartphone with 1 gb of ram
+
+Nikola Lukic
+Over a year ago
+On mobile you will need big revision , i suggest to you to optimize every aspect of your project. Make mesh little more low poly , be careful about materials , textures even console.log can make troubles ... You say nice : 'takes time for free memory' ...
+
+Salvatore
+Over a year ago
+yeah... i already know this... thank you for your time :) i will accept this answer on desktop application works fine, and for mobile no problem i think that i can manage the mesh in react components life cycle
+Add a comment
+
+Report this ad
+0
+
+I have also faced the same issue while working with my project.I suspect that you are only removing the mesh from the scene, not from the memory.Try doing the below to free the memory.It's working for me.
+
+javascript
+if (mesh) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();                                    
+    mesh = [];
+}
+Also, go through this StackOverflow discussion for further clarification. freeing memory in three.js
+
+three.js forum
+How to free up render memory?
+Questions
+geometrygltf-loader
+
+Log In
+
+​
+
+​
+How to free up render memory?
+Questions
+geometry
+gltf-loader
+
+
+
+Dec 2020
+Dec 2021
+post by Quan_Le on Dec 4, 2020
+post by donmccurdy on Dec 4, 2020
+post by Quan_Le on Dec 4, 2020
+post by donmccurdy on Dec 4, 2020
+post by Quan_Le on Dec 4, 2020
+
+Quan_Le
+Dec 2020
+I didn’t see any error in the console.
+But you’re right, I should check obj.isMesh() instead.
+Maybe this makes me cannot free up the renderer memory? Since when I check the renderer.info whenever I change another models, the renderer memory increased continuously.
+(You can see the pics I uploaded above).
+
+Thanks,
+
+
+post by donmccurdy on Dec 4, 2020
+
+donmccurdy
+Dec 2020
+Sorry, I’m not able to debug from these pictures. The code above would throw an error if it were running, and that error would appear in the console. If there is no error shown and the code is not running, then there seems to be some mistake elsewhere in your demo.
+
+
+post by Quan_Le on Dec 4, 2020
+
+Quan_Le
+Dec 2020
+Thanks @donmccurdy,
+
+I finally catched the error that would throw in the console since obj.texture is not a property as you said.
+Plus, I follow up this tutorial (https://threejsfundamentals.org/threejs/lessons/threejs-cleanup.html) to dispose the geometry and material and so on.
+
+However, when I check the renderer.info.memory, the {geometries: 18, textures: 38} values still increased continuously.
+
+Sorry, I am going to make a record for what I am doing and upload in this thread soon.
+
+
+1 year later
+post by Avner_Moshkovitz on Dec 29, 2021
+
+Avner_Moshkovitz
+Dec 2021
+atched the err
+
+I’m seeing similar increase of renderer.memory.textures which I reported here.
+I placed an example in jsfiddle (plays in Chrome).
+I don’t know if this is a problem though.
+
+
