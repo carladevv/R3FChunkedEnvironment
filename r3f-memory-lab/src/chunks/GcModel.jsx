@@ -1,5 +1,5 @@
 // src/chunks/GcModel.jsx
-import React, { useEffect, Suspense } from 'react'
+import React, { useEffect } from 'react'
 import { useGLTF } from '@react-three/drei'
 
 export default function GcModel({
@@ -17,12 +17,10 @@ export default function GcModel({
   }, [gltf, url, onReady])
 
   return (
-    <Suspense >
       <primitive
         object={gltf.scene}
         position={position}
         visible={visible}
       />
-    </Suspense>
   )
 }
