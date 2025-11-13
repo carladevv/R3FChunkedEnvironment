@@ -33,8 +33,8 @@ export default function App() {
         <LODScene />
 
         {/* Your existing box */}
-        <mesh>
-          <boxGeometry args={[1, 1, 1]} />
+        <mesh position={[0,2.5,0]}>
+          <boxGeometry args={[0.5, 2, 0.5]} />
           <meshStandardMaterial color="orange" />
         </mesh>
 

@@ -1,13 +1,15 @@
 // src/scene/LODScene.jsx
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useLoader } from '@react-three/fiber'
+import { useGLTF } from '@react-three/drei'
 import { useLODContext } from './LODContext'
 
 const LOD_LEVELS = [0, 1, 2, 3]
 
-function TextureLODPlane({ object }) {
+function LODTexturedMesh({ object }) {
   const {
+    meshFolder,
     diffuseFolder,
     normalFolder,
     roughnessFolder,
@@ -15,41 +17,49 @@ function TextureLODPlane({ object }) {
     level,
   } = object
 
-  const meshRef = useRef()
+  // Load the base mesh once
+  const gltf = useGLTF(meshFolder)
 
-  // URLs for ALL diffuse LODs
-  const diffuseUrls = useMemo(() => {
-    return LOD_LEVELS.map((lod) => {
-      const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-      return `${diffuseFolder}/${lodName}`
-    })
-  }, [diffuseFolder])
+  // ------- TEXTURE URL ARRAYS (fixed, not per-level) -------
 
-  // URLs for ALL normal LODs
-  const normalUrls = useMemo(() => {
-    return LOD_LEVELS.map((lod) => {
-      const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-      return `${normalFolder}/${lodName}`
-    })
-  }, [normalFolder])
+  const diffuseUrls = useMemo(
+    () =>
+      LOD_LEVELS.map((lod) => {
+        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
+        return `${diffuseFolder}/${lodName}`
+      }),
+    [diffuseFolder]
+  )
 
-  // URLs for ALL roughness LODs
-  const roughnessUrls = useMemo(() => {
-    return LOD_LEVELS.map((lod) => {
-      const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-      return `${roughnessFolder}/${lodName}`
-    })
-  }, [roughnessFolder])
+  const normalUrls = useMemo(
+    () =>
+      LOD_LEVELS.map((lod) => {
+        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
+        return `${normalFolder}/${lodName}`
+      }),
+    [normalFolder]
+  )
 
-  // URLs for ALL AO LODs
-  const aoUrls = useMemo(() => {
-    return LOD_LEVELS.map((lod) => {
-      const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-      return `${aoFolder}/${lodName}`
-    })
-  }, [aoFolder])
+  const roughnessUrls = useMemo(
+    () =>
+      LOD_LEVELS.map((lod) => {
+        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
+        return `${roughnessFolder}/${lodName}`
+      }),
+    [roughnessFolder]
+  )
 
-  // Load ALL textures once (per object)
+  const aoUrls = useMemo(
+    () =>
+      LOD_LEVELS.map((lod) => {
+        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
+        return `${aoFolder}/${lodName}`
+      }),
+    [aoFolder]
+  )
+
+  // ------- LOAD ALL TEXTURES ONCE (no reload on LOD change) -------
+
   const diffuseMaps = useLoader(THREE.TextureLoader, diffuseUrls)
   const normalMaps = useLoader(THREE.TextureLoader, normalUrls)
   const roughnessMaps = useLoader(THREE.TextureLoader, roughnessUrls)
@@ -70,9 +80,9 @@ function TextureLODPlane({ object }) {
     })
   }, [diffuseMaps])
 
-  // Configure normal textures (linear)
+  // Configure normal / roughness / ao as linear
   useEffect(() => {
-    normalMaps.forEach((tex) => {
+    const configureLinear = (tex) => {
       if (!tex) return
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping
       tex.anisotropy = 8
@@ -82,80 +92,61 @@ function TextureLODPlane({ object }) {
       } else {
         tex.encoding = THREE.LinearEncoding
       }
-    })
-  }, [normalMaps])
-
-  // Configure roughness textures (linear)
-  useEffect(() => {
-    roughnessMaps.forEach((tex) => {
-      if (!tex) return
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.anisotropy = 8
-
-      if ('colorSpace' in tex) {
-        tex.colorSpace = THREE.LinearSRGBColorSpace
-      } else {
-        tex.encoding = THREE.LinearEncoding
-      }
-    })
-  }, [roughnessMaps])
-
-  // Configure AO textures (linear)
-  useEffect(() => {
-    aoMaps.forEach((tex) => {
-      if (!tex) return
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.anisotropy = 8
-
-      if ('colorSpace' in tex) {
-        tex.colorSpace = THREE.LinearSRGBColorSpace
-      } else {
-        tex.encoding = THREE.LinearEncoding
-      }
-    })
-  }, [aoMaps])
-
-  // Ensure uv2 exists for aoMap (Three uses uv2)
-  useEffect(() => {
-    if (!meshRef.current) return
-    const geom = meshRef.current.geometry
-    if (!geom) return
-
-    if (!geom.attributes.uv2 && geom.attributes.uv) {
-      geom.setAttribute(
-        'uv2',
-        new THREE.BufferAttribute(geom.attributes.uv.array, 2)
-      )
     }
-  }, [])
 
-  // Pick textures for current LOD; fall back to LOD 0 if needed
+    normalMaps.forEach(configureLinear)
+    roughnessMaps.forEach(configureLinear)
+    aoMaps.forEach(configureLinear)
+  }, [normalMaps, roughnessMaps, aoMaps])
+
+  // ------- Pick textures for the current LOD -------
+
   const diffuseMap = diffuseMaps[level] || diffuseMaps[0]
   const normalMap = normalMaps[level] || normalMaps[0] || null
   const roughnessMap = roughnessMaps[level] || roughnessMaps[0] || null
   const aoMap = aoMaps[level] || aoMaps[0] || null
 
-  return (
-    <mesh
-      ref={meshRef}
-      rotation-x={-Math.PI / 2}
-      position={[0, 0, 0]}
-    >
-      <planeGeometry args={[10, 10]} />
-      <meshStandardMaterial
-        map={diffuseMap}
-        normalMap={normalMap}
-        roughnessMap={roughnessMap}
-        aoMap={aoMap}
-        normalScale={new THREE.Vector2(1, 1)}
-        color="#ffffff"
-        roughness={1}  // modulated by roughnessMap
-        metalness={0}
-        side={THREE.FrontSide}
-      />
-    </mesh>
-  )
+  // ------- Apply textures to mesh materials whenever LOD changes -------
+
+  useEffect(() => {
+    if (!gltf || !gltf.scene) return
+
+    gltf.scene.traverse((child) => {
+      if (!child.isMesh || !child.material) return
+
+      const mat = child.material
+
+      // Assign maps
+      if (diffuseMap) mat.map = diffuseMap
+      if (normalMap) mat.normalMap = normalMap
+      if (roughnessMap) mat.roughnessMap = roughnessMap
+      if (aoMap) mat.aoMap = aoMap
+
+      mat.color = new THREE.Color(0xffffff)
+      mat.roughness = 1
+      mat.metalness = 0
+
+      // Ensure UV2 exists for AO
+      if (aoMap && child.geometry) {
+        const geom = child.geometry
+        if (!geom.attributes.uv2 && geom.attributes.uv) {
+          geom.setAttribute(
+            'uv2',
+            new THREE.BufferAttribute(geom.attributes.uv.array, 2)
+          )
+        }
+      }
+
+      mat.needsUpdate = true
+    })
+  }, [gltf, diffuseMap, normalMap, roughnessMap, aoMap])
+
+  // You can position/rotate/scale this object here if you want per-object transforms
+  return <primitive object={gltf.scene} />
 }
+
+// Optional: if you like preloading
+// useGLTF.preload('models/environment/Ground68_00.glb')
 
 export default function LODScene() {
   const { objects } = useLODContext()
@@ -164,7 +155,7 @@ export default function LODScene() {
   return (
     <>
       {models.map((model) => (
-        <TextureLODPlane key={model.id} object={model} />
+        <LODTexturedMesh key={model.id} object={model} />
       ))}
     </>
   )
