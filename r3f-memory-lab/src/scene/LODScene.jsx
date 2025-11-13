@@ -32,6 +32,48 @@ function LODTexturedMesh({ object }) {
   const cubeBoxRef = useRef(null)
   const boxHelperRef = useRef(null)
 
+  // Prefetch distances (in meters)
+  const PREFETCH = {
+    diffuse: 6,
+    normal: 4,
+    roughness: 3,
+    ao: 2,
+  };
+
+  const prefetchTexture = (key, url) => {
+      // Already loaded earlier? Skip
+      if (prefetchedRef.current[key]) return;
+
+      loader.load(
+        url,
+        (tex) => {
+          if (!tex) return;
+
+          tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+          tex.anisotropy = 8;
+
+          if (key === "diffuse") {
+            if ("colorSpace" in tex) tex.colorSpace = THREE.SRGBColorSpace;
+            else tex.encoding = THREE.sRGBEncoding;
+          } else {
+            if ("colorSpace" in tex) tex.colorSpace = THREE.LinearSRGBColorSpace;
+            else tex.encoding = THREE.LinearEncoding;
+          }
+
+          // Immediately dispose — we only want GPU to “warm up”
+          tex.dispose();
+
+          prefetchedRef.current[key] = true;
+        },
+        undefined,
+        () => {
+          // even on error, mark so we don’t retry endlessly
+          prefetchedRef.current[key] = true;
+        }
+      );
+    };
+
+
   // 1) Build bounding box -> cube -> helper; also ensure uv2 exists
   useEffect(() => {
     if (!gltf || !gltf.scene) return
@@ -207,39 +249,61 @@ function LODTexturedMesh({ object }) {
   }, [])
 
   // 4) Auto LOD based on camera distance to bounding cube
+
+  // Track which LOD maps we have already prefetched
+  const prefetchedRef = useRef({
+    diffuse: false,
+    normal: false,
+    roughness: false,
+    ao: false,
+  });
+
+
   useFrame(() => {
-    if (mode !== 'auto') return
-    const cube = cubeBoxRef.current
-    if (!cube) return
+  if (!cubeBoxRef.current) return;
 
-    const p = camera.position
-    const min = cube.min
-    const max = cube.max
+  const cube = cubeBoxRef.current;
+  const p = camera.position;
+  const min = cube.min;
+  const max = cube.max;
 
-    // Distance from point to axis-aligned box
-    const dx =
-      p.x < min.x ? min.x - p.x : p.x > max.x ? p.x - max.x : 0
-    const dy =
-      p.y < min.y ? min.y - p.y : p.y > max.y ? p.y - max.y : 0
-    const dz =
-      p.z < min.z ? min.z - p.z : p.z > max.z ? p.z - max.z : 0
+  const dx = p.x < min.x ? min.x - p.x : p.x > max.x ? p.x - max.x : 0;
+  const dy = p.y < min.y ? min.y - p.y : p.y > max.y ? p.y - max.y : 0;
+  const dz = p.z < min.z ? min.z - p.z : p.z > max.z ? p.z - max.z : 0;
 
-    const inside = dx === 0 && dy === 0 && dz === 0
-    const dist = inside ? 0 : Math.sqrt(dx * dx + dy * dy + dz * dz)
+  const inside = dx === 0 && dy === 0 && dz === 0;
+  const dist = inside ? 0 : Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    let targetLevel
-    if (inside) {
-      targetLevel = 3
-    } else if (dist < 3) {
-      targetLevel = 2
-    } else {
-      targetLevel = 1
-    }
+  // ========= PREFETCH LOGIC ============
+  // Only for highest LOD textures (LOD 3)
+  const lodName = `LOD_03.jpg`;
+
+  if (dist < PREFETCH.diffuse && !prefetchedRef.current.diffuse) {
+    prefetchTexture("diffuse", `${diffuseFolder}/${lodName}`);
+  }
+  if (dist < PREFETCH.normal && !prefetchedRef.current.normal) {
+    prefetchTexture("normal", `${normalFolder}/${lodName}`);
+  }
+  if (dist < PREFETCH.roughness && !prefetchedRef.current.roughness) {
+    prefetchTexture("roughness", `${roughnessFolder}/${lodName}`);
+  }
+  if (dist < PREFETCH.ao && !prefetchedRef.current.ao) {
+    prefetchTexture("ao", `${aoFolder}/${lodName}`);
+  }
+
+  // ========= AUTO-LOD LOGIC ============
+  if (mode === "auto") {
+    let targetLevel = 1;
+
+    if (inside) targetLevel = 3;
+    else if (dist < 3) targetLevel = 2;
 
     if (targetLevel !== level) {
-      setLevel(id, targetLevel)
+      setLevel(id, targetLevel);
     }
-  })
+  }
+});
+
 
   // You can add per-object transforms if you store them in LOD_OBJECTS
   return <primitive object={gltf.scene} />
