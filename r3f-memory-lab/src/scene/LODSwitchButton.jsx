@@ -3,10 +3,12 @@ import React, { useEffect, useState } from 'react'
 import { useLODContext } from './LODContext'
 
 export default function LODSwitchButton() {
-  const { objects, setLevel } = useLODContext()
+  const { objects, setLevel, mode, setMode } = useLODContext()
   const ids = Object.keys(objects)
 
   const [selectedId, setSelectedId] = useState(null)
+
+  const isAuto = mode === 'auto'
 
   // Auto-select first object when it appears
   useEffect(() => {
@@ -20,13 +22,19 @@ export default function LODSwitchButton() {
 
   const handleSetLOD = (level) => {
     if (!selectedId) return
+    if (isAuto) return // ignore manual clicks in auto mode
     setLevel(selectedId, level)
   }
 
   const handleCycle = () => {
     if (!selectedId) return
+    if (isAuto) return
     const next = ((currentLevel || 0) + 1) % 4
     setLevel(selectedId, next)
+  }
+
+  const toggleMode = () => {
+    setMode(isAuto ? 'manual' : 'auto')
   }
 
   return (
@@ -53,6 +61,26 @@ export default function LODSwitchButton() {
       <div style={{ marginBottom: 4, opacity: 0.8 }}>
         LOD controller
       </div>
+
+      {/* Mode toggle */}
+      <button
+        onClick={toggleMode}
+        style={{
+          padding: '4px 6px',
+          borderRadius: 6,
+          border: isAuto
+            ? '1px solid rgba(0,200,255,0.9)'
+            : '1px solid rgba(255,255,255,0.3)',
+          background: isAuto
+            ? 'rgba(0,200,255,0.2)'
+            : 'rgba(0,0,0,0.4)',
+          color: 'white',
+          cursor: 'pointer',
+          fontSize: 11,
+        }}
+      >
+        Mode: {isAuto ? 'Auto (camera distance)' : 'Manual'}
+      </button>
 
       {/* Target object selector */}
       <select
@@ -90,7 +118,7 @@ export default function LODSwitchButton() {
             <button
               key={level}
               onClick={() => handleSetLOD(level)}
-              disabled={current?.isLoading}
+              disabled={current?.isLoading || isAuto}
               style={{
                 padding: '4px 6px',
                 borderRadius: 6,
@@ -101,9 +129,10 @@ export default function LODSwitchButton() {
                   ? 'rgba(0,255,150,0.2)'
                   : 'rgba(0,0,0,0.4)',
                 color: 'white',
-                cursor: current?.isLoading ? 'not-allowed' : 'pointer',
+                cursor:
+                  current?.isLoading || isAuto ? 'not-allowed' : 'pointer',
                 fontSize: 11,
-                opacity: current?.isLoading ? 0.6 : 1,
+                opacity: current?.isLoading || isAuto ? 0.6 : 1,
               }}
             >
               LOD {level}
@@ -113,7 +142,7 @@ export default function LODSwitchButton() {
 
         <button
           onClick={handleCycle}
-          disabled={current?.isLoading}
+          disabled={current?.isLoading || isAuto}
           title="Cycle 0 → 1 → 2 → 3 → 0"
           style={{
             padding: '4px 6px',
@@ -121,10 +150,11 @@ export default function LODSwitchButton() {
             border: '1px solid rgba(255,255,255,0.3)',
             background: 'rgba(0,0,0,0.4)',
             color: 'white',
-            cursor: current?.isLoading ? 'not-allowed' : 'pointer',
+            cursor:
+              current?.isLoading || isAuto ? 'not-allowed' : 'pointer',
             fontSize: 11,
             marginLeft: 4,
-            opacity: current?.isLoading ? 0.6 : 1,
+            opacity: current?.isLoading || isAuto ? 0.6 : 1,
           }}
         >
           Cycle
@@ -133,8 +163,9 @@ export default function LODSwitchButton() {
 
       {current && (
         <div style={{ marginTop: 4, opacity: 0.8 }}>
-          Current: <strong>{current.label}</strong> → LOD {currentLevel}
+          Current: <strong>{current.label}</strong> → LOD {currentLevel}{' '}
           {current.isLoading && ' (switching...)'}
+          {isAuto && ' (auto)'}
         </div>
       )}
     </div>

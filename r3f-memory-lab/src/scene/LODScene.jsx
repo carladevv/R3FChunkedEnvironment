@@ -1,11 +1,13 @@
 // src/scene/LODScene.jsx
 import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { useThree, useFrame } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { useLODContext } from './LODContext'
 
 function LODTexturedMesh({ object }) {
   const {
+    id,
     meshFolder,
     diffuseFolder,
     normalFolder,
@@ -14,13 +16,12 @@ function LODTexturedMesh({ object }) {
     level,
   } = object
 
-  // Load the base mesh once
-  const gltf = useGLTF(meshFolder)
+  const { camera } = useThree()
+  const { mode, setLevel } = useLODContext()
 
-  // ONE TextureLoader per component
+  const gltf = useGLTF(meshFolder)
   const loader = useMemo(() => new THREE.TextureLoader(), [])
 
-  // Keep track of currently active textures (for this object)
   const currentTexturesRef = useRef({
     diffuse: null,
     normal: null,
@@ -28,10 +29,35 @@ function LODTexturedMesh({ object }) {
     ao: null,
   })
 
-  // Ensure uv2 exists for AO (only needs to run once per mesh)
+  const cubeBoxRef = useRef(null)
+  const boxHelperRef = useRef(null)
+
+  // 1) Build bounding box -> cube -> helper; also ensure uv2 exists
   useEffect(() => {
     if (!gltf || !gltf.scene) return
 
+    // Compute tight bounding box from the object
+    const box = new THREE.Box3().setFromObject(gltf.scene)
+    const center = new THREE.Vector3()
+    const size = new THREE.Vector3()
+    box.getCenter(center)
+    box.getSize(size)
+
+    const maxSide = Math.max(size.x, size.y, size.z) || 1e-6
+    const half = maxSide / 2
+
+    const cubeBox = new THREE.Box3(
+      new THREE.Vector3(center.x - half, center.y - half, center.z - half),
+      new THREE.Vector3(center.x + half, center.y + half, center.z + half)
+    )
+    cubeBoxRef.current = cubeBox
+
+    // Visible wireframe helper for the cube
+    const helper = new THREE.Box3Helper(cubeBox, new THREE.Color(0x00ff00))
+    boxHelperRef.current = helper
+    gltf.scene.add(helper)
+
+    // Ensure uv2 exists for AO
     gltf.scene.traverse((child) => {
       if (!child.isMesh || !child.geometry) return
       const geom = child.geometry
@@ -42,9 +68,18 @@ function LODTexturedMesh({ object }) {
         )
       }
     })
+
+    return () => {
+      if (boxHelperRef.current) {
+        gltf.scene.remove(boxHelperRef.current)
+        boxHelperRef.current.geometry?.dispose()
+        boxHelperRef.current.material?.dispose()
+        boxHelperRef.current = null
+      }
+    }
   }, [gltf])
 
-  // Load new textures whenever LOD level changes
+  // 2) Load & swap textures when LOD level changes (with disposal)
   useEffect(() => {
     if (!gltf || !gltf.scene) return
     if (!diffuseFolder) return
@@ -73,12 +108,11 @@ function LODTexturedMesh({ object }) {
       if (remaining > 0) return
 
       if (cancelled) {
-        // We loaded these but component is gone, so just dispose them
         Object.values(nextTextures).forEach((t) => t && t.dispose())
         return
       }
 
-      // Apply new textures to materials
+      // Apply new textures
       gltf.scene.traverse((child) => {
         if (!child.isMesh || !child.material) return
         const mat = child.material
@@ -94,7 +128,7 @@ function LODTexturedMesh({ object }) {
         mat.needsUpdate = true
       })
 
-      // Dispose old textures now that materials point at the new ones
+      // Dispose old textures
       const old = currentTexturesRef.current
       if (old) {
         Object.values(old).forEach((t) => t && t.dispose())
@@ -113,14 +147,12 @@ function LODTexturedMesh({ object }) {
       texture.anisotropy = 8
 
       if (key === 'diffuse') {
-        // sRGB for color
         if ('colorSpace' in texture) {
           texture.colorSpace = THREE.SRGBColorSpace
         } else {
           texture.encoding = THREE.sRGBEncoding
         }
       } else {
-        // Linear for data maps
         if ('colorSpace' in texture) {
           texture.colorSpace = THREE.LinearSRGBColorSpace
         } else {
@@ -132,7 +164,6 @@ function LODTexturedMesh({ object }) {
       finishIfReady()
     }
 
-    // Trigger loads for this LOD
     Object.entries(urls).forEach(([key, url]) => {
       loader.load(
         url,
@@ -140,7 +171,6 @@ function LODTexturedMesh({ object }) {
         undefined,
         (err) => {
           console.warn(`Error loading ${key} texture for LOD ${level}:`, url, err)
-          // Even if this one failed, we still want to complete the batch
           finishIfReady()
         }
       )
@@ -159,7 +189,7 @@ function LODTexturedMesh({ object }) {
     aoFolder,
   ])
 
-  // Dispose whatever textures are left when this object unmounts
+  // 3) Dispose textures when this object unmounts
   useEffect(() => {
     return () => {
       const { diffuse, normal, roughness, ao } = currentTexturesRef.current
@@ -167,7 +197,6 @@ function LODTexturedMesh({ object }) {
       if (normal) normal.dispose()
       if (roughness) roughness.dispose()
       if (ao) ao.dispose()
-
       currentTexturesRef.current = {
         diffuse: null,
         normal: null,
@@ -177,7 +206,42 @@ function LODTexturedMesh({ object }) {
     }
   }, [])
 
-  // You can still position/scale the object if you add those props to LOD_OBJECTS
+  // 4) Auto LOD based on camera distance to bounding cube
+  useFrame(() => {
+    if (mode !== 'auto') return
+    const cube = cubeBoxRef.current
+    if (!cube) return
+
+    const p = camera.position
+    const min = cube.min
+    const max = cube.max
+
+    // Distance from point to axis-aligned box
+    const dx =
+      p.x < min.x ? min.x - p.x : p.x > max.x ? p.x - max.x : 0
+    const dy =
+      p.y < min.y ? min.y - p.y : p.y > max.y ? p.y - max.y : 0
+    const dz =
+      p.z < min.z ? min.z - p.z : p.z > max.z ? p.z - max.z : 0
+
+    const inside = dx === 0 && dy === 0 && dz === 0
+    const dist = inside ? 0 : Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    let targetLevel
+    if (inside) {
+      targetLevel = 3
+    } else if (dist < 3) {
+      targetLevel = 2
+    } else {
+      targetLevel = 1
+    }
+
+    if (targetLevel !== level) {
+      setLevel(id, targetLevel)
+    }
+  })
+
+  // You can add per-object transforms if you store them in LOD_OBJECTS
   return <primitive object={gltf.scene} />
 }
 

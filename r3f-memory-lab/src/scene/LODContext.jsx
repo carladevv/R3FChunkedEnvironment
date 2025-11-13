@@ -72,6 +72,7 @@ const LOD_OBJECTS = [
 
 export function LODProvider({ children }) {
   const [objects, setObjects] = useState({})
+  const [mode, setMode] = useState('manual') // 'manual' | 'auto'
 
   // Initialize objects once
   useEffect(() => {
@@ -102,7 +103,7 @@ export function LODProvider({ children }) {
   }
 
   return (
-    <LODContext.Provider value={{ objects, setLevel }}>
+    <LODContext.Provider value={{ objects, setLevel, mode, setMode }}>
       {children}
     </LODContext.Provider>
   )
