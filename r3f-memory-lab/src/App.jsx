@@ -45,6 +45,9 @@ export default function App() {
         <Stats />
         <OrbitControls />
         <Environment preset="forest" />
+
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[5, 5, 5]} intensity={1} />
       </Canvas>
 
       {/* your HUD (outside canvas) */}
