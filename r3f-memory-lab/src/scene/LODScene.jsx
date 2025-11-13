@@ -1,11 +1,8 @@
 // src/scene/LODScene.jsx
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { useLoader } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import { useLODContext } from './LODContext'
-
-const LOD_LEVELS = [0, 1, 2, 3]
 
 function LODTexturedMesh({ object }) {
   const {
@@ -20,133 +17,169 @@ function LODTexturedMesh({ object }) {
   // Load the base mesh once
   const gltf = useGLTF(meshFolder)
 
-  // ------- TEXTURE URL ARRAYS (fixed, not per-level) -------
+  // ONE TextureLoader per component
+  const loader = useMemo(() => new THREE.TextureLoader(), [])
 
-  const diffuseUrls = useMemo(
-    () =>
-      LOD_LEVELS.map((lod) => {
-        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-        return `${diffuseFolder}/${lodName}`
-      }),
-    [diffuseFolder]
-  )
+  // Keep track of currently active textures (for this object)
+  const currentTexturesRef = useRef({
+    diffuse: null,
+    normal: null,
+    roughness: null,
+    ao: null,
+  })
 
-  const normalUrls = useMemo(
-    () =>
-      LOD_LEVELS.map((lod) => {
-        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-        return `${normalFolder}/${lodName}`
-      }),
-    [normalFolder]
-  )
-
-  const roughnessUrls = useMemo(
-    () =>
-      LOD_LEVELS.map((lod) => {
-        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-        return `${roughnessFolder}/${lodName}`
-      }),
-    [roughnessFolder]
-  )
-
-  const aoUrls = useMemo(
-    () =>
-      LOD_LEVELS.map((lod) => {
-        const lodName = `LOD_${String(lod).padStart(2, '0')}.jpg`
-        return `${aoFolder}/${lodName}`
-      }),
-    [aoFolder]
-  )
-
-  // ------- LOAD ALL TEXTURES ONCE (no reload on LOD change) -------
-
-  const diffuseMaps = useLoader(THREE.TextureLoader, diffuseUrls)
-  const normalMaps = useLoader(THREE.TextureLoader, normalUrls)
-  const roughnessMaps = useLoader(THREE.TextureLoader, roughnessUrls)
-  const aoMaps = useLoader(THREE.TextureLoader, aoUrls)
-
-  // Configure diffuse textures (sRGB)
-  useEffect(() => {
-    diffuseMaps.forEach((tex) => {
-      if (!tex) return
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.anisotropy = 8
-
-      if ('colorSpace' in tex) {
-        tex.colorSpace = THREE.SRGBColorSpace
-      } else {
-        tex.encoding = THREE.sRGBEncoding
-      }
-    })
-  }, [diffuseMaps])
-
-  // Configure normal / roughness / ao as linear
-  useEffect(() => {
-    const configureLinear = (tex) => {
-      if (!tex) return
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.anisotropy = 8
-
-      if ('colorSpace' in tex) {
-        tex.colorSpace = THREE.LinearSRGBColorSpace
-      } else {
-        tex.encoding = THREE.LinearEncoding
-      }
-    }
-
-    normalMaps.forEach(configureLinear)
-    roughnessMaps.forEach(configureLinear)
-    aoMaps.forEach(configureLinear)
-  }, [normalMaps, roughnessMaps, aoMaps])
-
-  // ------- Pick textures for the current LOD -------
-
-  const diffuseMap = diffuseMaps[level] || diffuseMaps[0]
-  const normalMap = normalMaps[level] || normalMaps[0] || null
-  const roughnessMap = roughnessMaps[level] || roughnessMaps[0] || null
-  const aoMap = aoMaps[level] || aoMaps[0] || null
-
-  // ------- Apply textures to mesh materials whenever LOD changes -------
-
+  // Ensure uv2 exists for AO (only needs to run once per mesh)
   useEffect(() => {
     if (!gltf || !gltf.scene) return
 
     gltf.scene.traverse((child) => {
-      if (!child.isMesh || !child.material) return
+      if (!child.isMesh || !child.geometry) return
+      const geom = child.geometry
+      if (!geom.attributes.uv2 && geom.attributes.uv) {
+        geom.setAttribute(
+          'uv2',
+          new THREE.BufferAttribute(geom.attributes.uv.array, 2)
+        )
+      }
+    })
+  }, [gltf])
 
-      const mat = child.material
+  // Load new textures whenever LOD level changes
+  useEffect(() => {
+    if (!gltf || !gltf.scene) return
+    if (!diffuseFolder) return
 
-      // Assign maps
-      if (diffuseMap) mat.map = diffuseMap
-      if (normalMap) mat.normalMap = normalMap
-      if (roughnessMap) mat.roughnessMap = roughnessMap
-      if (aoMap) mat.aoMap = aoMap
+    let cancelled = false
 
-      mat.color = new THREE.Color(0xffffff)
-      mat.roughness = 1
-      mat.metalness = 0
+    const lodName = `LOD_${String(level).padStart(2, '0')}.jpg`
+    const urls = {
+      diffuse: `${diffuseFolder}/${lodName}`,
+      normal: `${normalFolder}/${lodName}`,
+      roughness: `${roughnessFolder}/${lodName}`,
+      ao: `${aoFolder}/${lodName}`,
+    }
 
-      // Ensure UV2 exists for AO
-      if (aoMap && child.geometry) {
-        const geom = child.geometry
-        if (!geom.attributes.uv2 && geom.attributes.uv) {
-          geom.setAttribute(
-            'uv2',
-            new THREE.BufferAttribute(geom.attributes.uv.array, 2)
-          )
+    const nextTextures = {
+      diffuse: null,
+      normal: null,
+      roughness: null,
+      ao: null,
+    }
+
+    let remaining = Object.keys(urls).length
+
+    const finishIfReady = () => {
+      remaining -= 1
+      if (remaining > 0) return
+
+      if (cancelled) {
+        // We loaded these but component is gone, so just dispose them
+        Object.values(nextTextures).forEach((t) => t && t.dispose())
+        return
+      }
+
+      // Apply new textures to materials
+      gltf.scene.traverse((child) => {
+        if (!child.isMesh || !child.material) return
+        const mat = child.material
+
+        mat.map = nextTextures.diffuse || null
+        mat.normalMap = nextTextures.normal || null
+        mat.roughnessMap = nextTextures.roughness || null
+        mat.aoMap = nextTextures.ao || null
+
+        mat.color = new THREE.Color(0xffffff)
+        mat.roughness = 1
+        mat.metalness = 0
+        mat.needsUpdate = true
+      })
+
+      // Dispose old textures now that materials point at the new ones
+      const old = currentTexturesRef.current
+      if (old) {
+        Object.values(old).forEach((t) => t && t.dispose())
+      }
+
+      currentTexturesRef.current = nextTextures
+    }
+
+    const onTextureLoaded = (key, texture) => {
+      if (cancelled) {
+        texture.dispose()
+        return
+      }
+
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+      texture.anisotropy = 8
+
+      if (key === 'diffuse') {
+        // sRGB for color
+        if ('colorSpace' in texture) {
+          texture.colorSpace = THREE.SRGBColorSpace
+        } else {
+          texture.encoding = THREE.sRGBEncoding
+        }
+      } else {
+        // Linear for data maps
+        if ('colorSpace' in texture) {
+          texture.colorSpace = THREE.LinearSRGBColorSpace
+        } else {
+          texture.encoding = THREE.LinearEncoding
         }
       }
 
-      mat.needsUpdate = true
-    })
-  }, [gltf, diffuseMap, normalMap, roughnessMap, aoMap])
+      nextTextures[key] = texture
+      finishIfReady()
+    }
 
-  // You can position/rotate/scale this object here if you want per-object transforms
+    // Trigger loads for this LOD
+    Object.entries(urls).forEach(([key, url]) => {
+      loader.load(
+        url,
+        (tex) => onTextureLoaded(key, tex),
+        undefined,
+        (err) => {
+          console.warn(`Error loading ${key} texture for LOD ${level}:`, url, err)
+          // Even if this one failed, we still want to complete the batch
+          finishIfReady()
+        }
+      )
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    gltf,
+    loader,
+    level,
+    diffuseFolder,
+    normalFolder,
+    roughnessFolder,
+    aoFolder,
+  ])
+
+  // Dispose whatever textures are left when this object unmounts
+  useEffect(() => {
+    return () => {
+      const { diffuse, normal, roughness, ao } = currentTexturesRef.current
+      if (diffuse) diffuse.dispose()
+      if (normal) normal.dispose()
+      if (roughness) roughness.dispose()
+      if (ao) ao.dispose()
+
+      currentTexturesRef.current = {
+        diffuse: null,
+        normal: null,
+        roughness: null,
+        ao: null,
+      }
+    }
+  }, [])
+
+  // You can still position/scale the object if you add those props to LOD_OBJECTS
   return <primitive object={gltf.scene} />
 }
-
-// Optional: if you like preloading
-// useGLTF.preload('models/environment/Ground68_00.glb')
 
 export default function LODScene() {
   const { objects } = useLODContext()
