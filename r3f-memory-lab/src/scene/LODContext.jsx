@@ -11,7 +11,8 @@ const LOD_OBJECTS = [
     label: 'Ground68_00',
     diffuseFolder: 'textures/LODs/Ground68_00/Diffuse_LODs',
     normalFolder: 'textures/LODs/Ground68_00/Normal_LODs',
-    armFolder: 'textures/LODs/Ground68_00/ARM_LODs',
+    roughnessFolder:   'textures/LODs/Ground68_00/Roughness_LODs', 
+    aoFolder: 'textures/LODs/Ground68_00/AO_LODs',
   },
   // Add more objects here later if you want
 ]
