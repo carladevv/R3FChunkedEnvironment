@@ -22,6 +22,23 @@ function LODTexturedMesh({ object }) {
   const gltf = useGLTF(meshFolder)
   const loader = useMemo(() => new THREE.TextureLoader(), [])
 
+  function loadTileTexture(url, onLoad, onProgress, onError) {
+    return loader.load(
+      url,
+      (texture) => {
+        texture.flipY = false;    // <--- fix vertical flip here
+        texture.needsUpdate = true;
+        onLoad && onLoad(texture);
+      },
+      onProgress,
+      (err) => {
+        console.warn('Error loading texture:', url, err);
+        onError && onError(err);
+      }
+    );
+  }
+
+
   const currentTexturesRef = useRef({
     diffuse: null,
     normal: null,
@@ -165,7 +182,7 @@ function LODTexturedMesh({ object }) {
     }
 
     Object.entries(urls).forEach(([key, url]) => {
-      loader.load(
+      loadTileTexture(
         url,
         (tex) => onTextureLoaded(key, tex),
         undefined,
@@ -229,11 +246,11 @@ function LODTexturedMesh({ object }) {
 
     let targetLevel
     if (inside) {
-      targetLevel = 3
-    } else if (dist < 3) {
       targetLevel = 2
-    } else {
+    } else if (dist < 20) {
       targetLevel = 1
+    } else {
+      targetLevel = 0
     }
 
     if (targetLevel !== level) {

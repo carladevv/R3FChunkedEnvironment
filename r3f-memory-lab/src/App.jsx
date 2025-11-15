@@ -33,7 +33,7 @@ export default function App() {
         <LODScene />
 
         {/* Your existing box */}
-        <mesh position={[0,2.5,0]}>
+        <mesh position={[0,1,0]}>
           <boxGeometry args={[0.5, 2, 0.5]} />
           <meshStandardMaterial color="orange" />
         </mesh>
@@ -44,14 +44,14 @@ export default function App() {
         {/* usual scene helpers */}
         <Stats />
         <OrbitControls />
-        <Environment preset="forest" />
+        <Environment preset="forest" environmentIntensity={0.2} />
 
         <ambientLight intensity={0.5} />
         <directionalLight position={[5, 5, 5]} intensity={1} />
       </Canvas>
 
       {/* your HUD (outside canvas) */}
-      <MetricsHud data={metrics} />
+      {/* <MetricsHud data={metrics} /> */}
 
       {/* LOD controller button */}
       <LODSwitchButton />
