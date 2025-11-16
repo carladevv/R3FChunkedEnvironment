@@ -6,6 +6,8 @@ import { OrbitControls, Stats, Environment } from '@react-three/drei'
 import MetricsHud from './metrics/MetricsHud'
 import MetricsCollector from './metrics/MetricCollector'
 
+import { VirtualTexturedEnvironment } from './VT/VirtualTexturedEnvironment'
+
 // LOD components
 import { LODProvider } from './scene/LODContext'
 import LODScene from './scene/LODScene'
@@ -30,10 +32,15 @@ export default function App() {
         shadows={false}
       >
         {/* LOD objects will be rendered here as separate GcModel components */}
-        <LODScene />
+        {/* <LODScene /> */}
+
+        <VirtualTexturedEnvironment envName="Ground68" />
+        <VirtualTexturedEnvironment envName="Ground48" />
+        <VirtualTexturedEnvironment envName="Ground93" />
+        <VirtualTexturedEnvironment envName="Rock58" />
 
         {/* Your existing box */}
-        <mesh position={[0,1,0]}>
+        <mesh position={[0, 1, 0]}>
           <boxGeometry args={[0.5, 2, 0.5]} />
           <meshStandardMaterial color="orange" />
         </mesh>
