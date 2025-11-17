@@ -1,8 +1,7 @@
 // src/VT/VirtualTexturedEnvironment.jsx
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { useLoader } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import { GLTFLoader } from 'three-stdlib';
 
 import { VT_ENVIRONMENTS } from './VTConfig';
@@ -35,10 +34,8 @@ export function VirtualTexturedEnvironment({ envName, visible = true }) {
       await manager.init();
       if (cancelled) return;
 
-      const vtMaterial = createVirtualTextureMaterial(
-        manager.atlasTexture,
-        envConfig.tilesPerAxis
-      );
+      const uniforms = manager.getUniforms();
+      const vtMaterial = createVirtualTextureMaterial(uniforms);
 
       setMaterial(vtMaterial);
     })();
@@ -46,11 +43,10 @@ export function VirtualTexturedEnvironment({ envName, visible = true }) {
     return () => {
       cancelled = true;
 
-      if (managerRef.current?.atlasTexture) {
-        managerRef.current.atlasTexture.dispose();
+      if (managerRef.current) {
+        managerRef.current.dispose();
+        managerRef.current = null;
       }
-      managerRef.current = null;
-
       if (material) {
         material.dispose();
       }
@@ -58,7 +54,7 @@ export function VirtualTexturedEnvironment({ envName, visible = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envConfig?.name]);
 
-  // Once we have material and gltf, apply material to all meshes
+  // Apply material to meshes when ready
   useEffect(() => {
     if (!material || !gltf) return;
 

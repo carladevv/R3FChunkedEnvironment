@@ -7,78 +7,57 @@ export class VirtualTextureManager {
     this.env = envConfig;
     this.loader = new THREE.TextureLoader();
 
-    this.atlasTexture = null;   // THREE.CanvasTexture
-    this.tileSize = null;       // inferred from first loaded tile
-    this.atlasSize = null;      // tileSize * tilesPerAxis
+    this.tilesPerAxis = envConfig.tilesPerAxis;
+    this.tileCount = envConfig.tileCount;
+
+    this.atlasLow = null;   // LOD_00 atlas
+    this.atlasMid = null;   // LOD_01 atlas
+    this.atlasHigh = null;  // LOD_02 atlas
+
+    this.tileSizes = {
+      low: null,
+      mid: null,
+      high: null,
+    };
   }
 
   async init() {
-    // 1) Load all tile textures (diffuse, for now)
-    const tileTextures = await this._loadAllDiffuseTiles();
+    const { lodNames } = this.env;
 
-    if (!tileTextures.length) {
-      throw new Error(`No tiles loaded for VT environment ${this.env.name}`);
+    // 1) Load tiles for each LOD (in parallel)
+    const [lowTiles, midTiles, highTiles] = await Promise.all([
+      this._loadTilesForLod(lodNames.low),
+      this._loadTilesForLod(lodNames.mid),
+      this._loadTilesForLod(lodNames.high),
+    ]);
+
+    if (!lowTiles.length) {
+      throw new Error(`[VT] No tiles for low LOD (${lodNames.low}) in ${this.env.name}`);
+    }
+    if (!midTiles.length) {
+      console.warn(`[VT] No tiles for mid LOD (${lodNames.mid}) in ${this.env.name}`);
+    }
+    if (!highTiles.length) {
+      console.warn(`[VT] No tiles for high LOD (${lodNames.high}) in ${this.env.name}`);
     }
 
-    // 2) Infer tile size from first tile
-    const firstImage = tileTextures[0].image;
-    const tileWidth = firstImage.width;
-    const tileHeight = firstImage.height;
+    // 2) Build atlases
+    this.atlasLow = this._buildAtlasFromTiles(lowTiles, 'low');
+    this.atlasMid = midTiles.length ? this._buildAtlasFromTiles(midTiles, 'mid') : null;
+    this.atlasHigh = highTiles.length ? this._buildAtlasFromTiles(highTiles, 'high') : null;
 
-    if (tileWidth !== tileHeight) {
-      console.warn(
-        `[VT] Tiles for ${this.env.name} are not square: ` +
-          `${tileWidth}x${tileHeight}. This is supported, but unexpected.`
-      );
-    }
-
-    this.tileSize = tileWidth;
-    this.atlasSize = this.tileSize * this.env.tilesPerAxis;
-
-    // 3) Build atlas with a canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = this.atlasSize;
-    canvas.height = this.atlasSize;
-    const ctx = canvas.getContext('2d');
-
-    // We assume tile indexing matches your Blender script:
-    // 01..04 = top row, left to right
-    // 05..08 = second row, ...
-    // We'll place them row-major in the canvas accordingly.
-    tileTextures.forEach((tex, i) => {
-      const img = tex.image;
-      const col = i % this.env.tilesPerAxis;             // x tile index
-      const row = Math.floor(i / this.env.tilesPerAxis); // y tile index (top to bottom)
-
-      const x = col * this.tileSize;
-      const y = row * this.tileSize;
-
-      ctx.drawImage(img, x, y, this.tileSize, this.tileSize);
-    });
-
-    // 4) Create CanvasTexture from atlas
-    const atlasTexture = new THREE.CanvasTexture(canvas);
-    atlasTexture.flipY = false;
-    atlasTexture.wrapS = THREE.ClampToEdgeWrapping;
-    atlasTexture.wrapT = THREE.ClampToEdgeWrapping;
-    atlasTexture.minFilter = THREE.LinearMipMapLinearFilter;
-    atlasTexture.magFilter = THREE.LinearFilter;
-    atlasTexture.generateMipmaps = true;
-    atlasTexture.needsUpdate = true;
-
-    // Dispose individual tile textures (we don't need them anymore)
-    tileTextures.forEach((t) => t.dispose());
-
-    this.atlasTexture = atlasTexture;
+    // Dispose individual tiles; we only keep the atlases
+    lowTiles.forEach((t) => t.dispose());
+    midTiles.forEach((t) => t.dispose());
+    highTiles.forEach((t) => t.dispose());
   }
 
-  async _loadAllDiffuseTiles() {
+  async _loadTilesForLod(lodName) {
     const {
       name,
       tileBasePath,
       tileCount,
       diffuseFolderName,
-      diffuseLodName,
       diffuseExtension,
     } = this.env;
 
@@ -87,8 +66,7 @@ export class VirtualTextureManager {
     for (let i = 0; i < tileCount; i++) {
       const index = String(i + 1).padStart(2, '0'); // 01..16
       const tileId = `${name}_${index}`;
-
-      const url = `${tileBasePath}/${tileId}/${diffuseFolderName}/${diffuseLodName}${diffuseExtension}`;
+      const url = `${tileBasePath}/${tileId}/${diffuseFolderName}/${lodName}${diffuseExtension}`;
 
       promises.push(
         new Promise((resolve, reject) => {
@@ -100,27 +78,83 @@ export class VirtualTextureManager {
             },
             undefined,
             (err) => {
-              console.warn(`[VT] Failed to load tile ${tileId}:`, url, err);
-              reject(err);
+              console.warn(`[VT] Failed to load tile ${tileId} (${lodName}):`, url, err);
+              resolve(null); // continue even if some fail
             }
           );
         })
       );
     }
 
-    // We want all tiles to load; if one fails, we still continue with others
-    const results = await Promise.allSettled(promises);
+    const results = await Promise.all(promises);
 
-    const textures = results
-      .filter((r) => r.status === 'fulfilled')
-      .map((r) => r.value);
+    return results.filter((t) => t);
+  }
 
-    if (textures.length !== tileCount) {
+  _buildAtlasFromTiles(tileTextures, lodKey) {
+    if (!tileTextures.length) return null;
+
+    const first = tileTextures[0].image;
+    const tileWidth = first.width;
+    const tileHeight = first.height;
+
+    if (tileWidth !== tileHeight) {
       console.warn(
-        `[VT] Only loaded ${textures.length}/${tileCount} tiles for ${name}`
+        `[VT] Tiles for ${this.env.name} (${lodKey}) are not square: ${tileWidth}x${tileHeight}`
       );
     }
 
-    return textures;
+    this.tileSizes[lodKey] = tileWidth;
+
+    const atlasSize = tileWidth * this.tilesPerAxis;
+    const canvas = document.createElement('canvas');
+    canvas.width = atlasSize;
+    canvas.height = atlasSize;
+    const ctx = canvas.getContext('2d');
+
+    // row-major: 0..3 = top row, 4..7 = second row, etc.
+    tileTextures.forEach((tex, i) => {
+      const img = tex.image;
+      const col = i % this.tilesPerAxis;
+      const row = Math.floor(i / this.tilesPerAxis);
+      const x = col * tileWidth;
+      const y = row * tileWidth;
+      ctx.drawImage(img, x, y, tileWidth, tileWidth);
+    });
+
+    const atlasTexture = new THREE.CanvasTexture(canvas);
+    atlasTexture.flipY = false;
+    atlasTexture.wrapS = THREE.ClampToEdgeWrapping;
+    atlasTexture.wrapT = THREE.ClampToEdgeWrapping;
+    atlasTexture.minFilter = THREE.LinearMipMapLinearFilter;
+    atlasTexture.magFilter = THREE.LinearFilter;
+    atlasTexture.generateMipmaps = true;
+    atlasTexture.needsUpdate = true;
+
+    return atlasTexture;
+  }
+
+  getUniforms() {
+    const { lodDistances } = this.env;
+
+    // Fallbacks: if mid/high are missing, fall back to low
+    const atlasLow = this.atlasLow;
+    const atlasMid = this.atlasMid || this.atlasLow;
+    const atlasHigh = this.atlasHigh || atlasMid;
+
+    return {
+      uAtlasLod0: { value: atlasLow },
+      uAtlasLod1: { value: atlasMid },
+      uAtlasLod2: { value: atlasHigh },
+      uTilesPerAxis: { value: this.tilesPerAxis },
+      uLod1Distance: { value: lodDistances.midStart },
+      uLod2Distance: { value: lodDistances.highStart },
+    };
+  }
+
+  dispose() {
+    if (this.atlasLow) this.atlasLow.dispose();
+    if (this.atlasMid && this.atlasMid !== this.atlasLow) this.atlasMid.dispose();
+    if (this.atlasHigh && this.atlasHigh !== this.atlasMid) this.atlasHigh.dispose();
   }
 }
