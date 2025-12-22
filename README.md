@@ -19,24 +19,23 @@ Users can navigate a scene composed of dozens of individually textured chunks, e
 
 ## **📂 Repository Structure**
 ```bash
-.
-├── environment_model_prep_scripts/     # Blender Python scripts for chunking, UVs, baking, and LOD export
-│   ├── 01_mesh_into_chunks.py          # Splits mesh based on texture density & world bounds
-│   ├── 02_uv_unwrap_chunks.py          # Applies Smart UV per chunk + global texel density normalization
-│   ├── 03_bake_textures_to_chunks.py   # Bakes diffuse to 1K per chunk using Cycles
-│   └── 04_export_chunks_and_texture_lods.py  # Exports GLB + 3 LOD JPEGs per tile
+environment_model_prep_scripts/     # Blender Python scripts for chunking, UVs, baking, and LOD export
+├── 01_mesh_into_chunks.py          # Splits mesh based on texture density & world bounds
+├── 02_uv_unwrap_chunks.py          # Applies Smart UV per chunk + global texel density normalization
+├── 03_bake_textures_to_chunks.py   # Bakes diffuse to 1K per chunk using Cycles
+└── 04_export_chunks_and_texture_lods.py  # Exports GLB + 3 LOD JPEGs per tile
+
+r3f-memory-lab/                     # Main React + R3F application
+├── public/models/                  # Organized tile folders (e.g. SaintPierredAlethCathedral_01/)
+│   └── {env}_XX/
+│       ├── {env}_XX.glb            # Geometry-only chunk
+│       └── Diffuse/                # LOD_00.jpg, LOD_01.jpg, LOD_02.jpg
 │
-└── r3f-memory-lab/                     # Main React + R3F application
-    ├── public/models/                  # Organized tile folders (e.g. SaintPierredAlethCathedral_01/)
-    │   └── {env}_XX/
-    │       ├── {env}_XX.glb            # Geometry-only chunk
-    │       └── Diffuse/                # LOD_00.jpg, LOD_01.jpg, LOD_02.jpg
-    │
-    └── src/
-        ├── App.jsx                     # Root scene with Canvas, OrbitControls, and HUD
-        ├── chunks/                     # GcModel + LODModel components
-        ├── scene/                      # LODContext, LODScene, and SceneJanitor for cleanup
-        └── metrics/                    # Performance collector, HUD panel, and useR3fMetrics hook
+└── src/
+    ├── App.jsx                     # Root scene with Canvas, OrbitControls, and HUD
+    ├── chunks/                     # GcModel + LODModel components
+    ├── scene/                      # LODContext, LODScene, and SceneJanitor for cleanup
+    └── metrics/                    # Performance collector, HUD panel, and useR3fMetrics hook
 
 ```
 
